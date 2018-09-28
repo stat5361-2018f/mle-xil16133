@@ -208,7 +208,7 @@ If we assume $\log N_t$ are independent and normally distributed with mean $log 
 $$
 l(x,r,K,\sigma^2)=-\frac{n}{2}\ln \sigma^2-\frac{1}{2\sigma^2}\sum_{i=1}^n (\log(x_i)-\log \frac{2k}{2+(k-2)e^{-rt_i}})^2+C.
 $$
-where $C$ is a constant. Here we use Nelder-Mead method to solve this problem.
+where $C$ is a constant. Here we use BFGS with linear constraints to solve this problem. Since the commonly used optimization functions in r will do minimization in default, here we use the negative log-likelihood function as the objective function. We provide the function for the objective function and its first order derivative function.
 ```{r}
 y <- beetles1$beetles
 t <- beetles1$days
@@ -224,15 +224,18 @@ grr <- function(x){
   x2 <- x[2] # k
   x3 <- x[3] # r
   c(n/2/x1-sum((log(y)-log(2*x2/(2+(x2-2)*exp(-x3*t))))^2)/2/x1^2,
-    sum((log(y)-log(2*x2/(2+(x2-2)*exp(-x3*t))))*(2*exp(-x3*t)-2)/(2+(x2-2)*exp(-x3*t)))/x2/x1,
-    sum((log(y)-log(2*x2/(2+(x2-2)*exp(-x3*t))))*((2-x2)*t*exp(-x3*t))/(2+(x2-2)*exp(-x3*t)))/x1
+    sum((log(y)-log(2*x2/(2+(x2-2)*exp(-x3*t))))*(2*exp(-x3*t)-2)/(2+(x2-
+                                                    2)*exp(-x3*t)))/x2/x1,
+    sum((log(y)-log(2*x2/(2+(x2-2)*exp(-x3*t))))*((2-x2)*t*exp(-x3*t))/(2+
+                                                    (x2-2)*exp(-x3*t)))/x1
   )
 }
 
-mod1 <- optim(c(1,1900,0.1), fr, grr, method = "BFGS", hessian = TRUE)
-mod1 <- optim(c(1,2100,0.1), fr, grr, method = "CG", hessian = TRUE)
-mod1 <- constrOptim(c(1,1200,0.1), fr, grr, ui=diag(nrow = 3), ci=c(0,0,0), hessian = TRUE)
+# add linear constraints on parameters, they are all positive
+mod1 <- constrOptim(c(0.01,2200,0.1), fr, grr, ui=diag(nrow = 3), 
+                    ci=c(0,0,0), hessian = TRUE)
+mod1
 var.est <- diag(solve(-mod1$hessian))
 var.est
 ```
-
+From the result, we know that the eistimated variances from Hessian matrix are $1.797\times 10^{-3}$, $8.126 \times 10^5$ and 0. Since the last one is negative, thus we set it to be 0.

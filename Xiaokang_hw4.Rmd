@@ -1,0 +1,238 @@
+---
+title: "Homework 4" 
+# subtitle: "possible subtitle goes here"
+author:
+  - Xiaokang Liu
+date: "`r format(Sys.time(), '%d %B %Y')`"
+documentclass: article
+papersize: letter
+fontsize: 11pt
+output:
+  bookdown::pdf_document2
+---
+
+
+```{r setup, echo = FALSE, message = FALSE, warning = FALSE}
+## some utility functions, see the source code for details
+source("utils_template.R")
+
+## specify the packages needed
+pkgs <- "ggplot2"
+need.packages(pkgs)
+
+## external data can be read in by regular functions,
+## such as read.table or load
+
+## for latex and html output
+isHtml <- knitr::is_html_output()
+isLatex <- knitr::is_latex_output()
+latex <- ifelse(isLatex, '\\LaTeX\\', 'LaTeX')
+
+## specify global chunk options
+knitr::opts_chunk$set(fig.width = 5, fig.height = 4, dpi = 300,
+                      out.width = "90%", fig.align = "center")
+
+```
+
+# Many local maxima
+Consider the probability density function with parameter $\theta$:
+$$
+f(x;\theta)=\frac{1-cos(x-\theta)}{2\pi},~0\leq x \leq 2\pi,~\theta \in (-\pi,\pi).
+$$
+A random sample from the distribution is
+```{r}
+samp <- c(3.91, 4.85, 2.28, 4.06, 3.70, 4.04, 5.46, 3.53, 2.28, 1.96,
+       2.53, 3.88, 2.22, 3.47, 4.82, 2.46, 2.99, 2.54, 0.52)
+```
+
+## Part 1
+The log-likelihood function of $\theta$ based on the sample is
+$$
+l(\theta)=\sum_{i=1}^n \ln(1-cos(x_i-\theta))-n\ln(2\pi).
+$$
+And the plot of it between $-\pi$ and $\pi$ is:
+```{r}
+logf <- function(dat,para){
+  f <- sum(log(1-cos(dat-para))-log(2*pi))
+  return(f)
+}
+
+int <- seq(-pi,pi,0.02)
+val <- vector()
+for (i in 1:length(int)){
+  val <- c(val,logf(samp,int[i]))
+}
+
+plot(int,val,xlab = "theta",ylab = "log-likelihood")
+```
+
+## Part 2
+The expectation of $X$ can be derived by
+\begin{align*}
+E(x|\theta) & = \int_0^{2\pi} x \frac{1-cos(x-\theta)}{2\pi} dx \\
+            & = \pi-\frac{1}{2\pi}\int_{-\theta}^{2\pi-\theta} x cos(x) dx\\
+            & = \pi+sin(\theta).
+\end{align*}
+Thus, the moment estimator of $\theta$ is $\tilde \theta_n=\arcsin(\bar X_n-\pi)$. Since we have defined an interval for $\theta$, thus the only possible moment estimator from the sample is 0.095394.
+
+## Part 3
+```{r}
+init <- asin(mean(samp)-pi) # it's okay to +/- 2*k*pi
+l1 <- function(para,dat){
+  f <- -sum(sin(samp-para)/(1-cos(samp-para)))
+  return(f)
+}
+l2 <- function(para,dat){
+  f <- sum((cos(samp-para)-1)/(1-cos(samp-para))^2)
+}
+
+NR <- function(ini,x,tol,max_ite){
+  err <- 100
+  iter <- 0
+  conver <- 0
+  while ((err > tol) & (iter < max_ite)) {
+    ini1 <- ini-l1(ini,x)/l2(ini,x)
+    err <- abs(ini1-ini)
+    ini <- ini1
+    iter <- iter+1
+  }
+  if (iter >= max_ite) conver <- 1
+  return(list(ini1=ini1,iter=iter,err=err,conver=conver))
+}
+
+NR(init,samp,tol = .Machine$double.eps^0.5,max_ite = 200)
+```
+
+## Part 4
+```{r}
+NR(-2.7,samp,tol = .Machine$double.eps^0.5,max_ite = 200)
+NR(2.7,samp,tol = .Machine$double.eps^0.5,max_ite = 200)
+```
+
+## Part 5
+```{r}
+init <- seq(-pi, pi, length.out = 200)
+n <- length(init)
+eps0 <- .Machine$double.eps^0.5
+max_ite0 <- 200
+
+val_NR <- rep(0,n)
+conv_NR <- rep(0,n)
+iter_NR <- rep(0,n)
+
+
+for (i in 1:n){
+  res <- NR(init[i],samp,eps0,max_ite0)
+  val_NR[i] <- res$ini1
+  iter_NR[i] <- res$iter
+  conv_NR[i] <- res$conver
+}
+
+val_NR1 <- round(val_NR,9)
+uni <- unique(val_NR1)
+gr <- matrix(nrow = 18, ncol = 200)
+for (j in 1:18){
+  gr[j,] <- init*(val_NR1==uni[j])
+}
+# group 1 to group 18
+table(val_NR1)
+for (i in 1:18){
+  x <- gr[i,]
+  z <- x[ min( which ( x != 0 )) : max( which( x != 0 )) ]
+  cat("At group", i, ",values are:",z,"\n")
+}
+
+```
+
+
+# Modeling beetle data
+The counts of a floor beetle at various time points (in days) are given in a dataset as below:
+```{r}
+beetles1 <- data.frame(
+    days    = c(0,  8,  28,  41,  63,  69,   97, 117,  135,  154),
+    beetles = c(2, 47, 192, 256, 768, 896, 1120, 896, 1184, 1024))
+```
+
+## Fit the population growth model
+```{r}
+lk <- function(t,a,b){
+  f <- (4-4*exp(-b*t))/(2+(a-2)*exp(-b*t))^2
+  return(f)
+}
+
+lr <- function(t,a,b){
+  f <- (2*a*(a-2)*t*exp(-b*t))/(2+(a-2)*exp(-b*t))^2
+  return(f)
+}
+
+GN <- function(t,y,ini,tol,max_ite){
+  err <- 100000000
+  iter <- 0
+  conver <- 0
+  while ((err > tol)&(iter < max_ite)) {
+     f1 <- lk(t,ini[1],ini[2])
+     f2 <- lr(t,ini[1],ini[2])
+     A <- cbind(f1,f2)
+     ini1 <- ini+solve(t(A)%*%A+0.00001*diag(nrow = 2))%*%t(A)%*%(y-2*ini[1]/(2+(ini[1]-2)*exp(-ini[2]*t)))
+     err <- sum((ini-ini1)^2)
+     ini <- ini1
+     iter <- iter+1
+  }
+  ss <- sum((y-2*ini[1]/(2+(ini[1]-2)*exp(-ini[2]*t)))^2)
+  if (iter >= max_ite) conver <- 1
+  return(list(est=ini,ss=ss,iter=iter,err=err,conver=conver))
+}
+GN(beetles1$days,beetles1$beetles,c(1100,0.1),.Machine$double.eps^0.5,200)
+```
+
+
+## Show the contour plot
+Show the contour plot of the sum of squared errors.
+```{r}
+kseq <- seq(500, 1400, length.out = 200)
+rseq <- seq(0, 0.5, length.out = 200)
+cont <- matrix(nrow = length(kseq), ncol = length(rseq))
+y <- beetles1$beetles
+t <- beetles1$days
+for (i in 1:length(kseq)){
+  for (j in 1:length(rseq)){
+    cont[i,j] <- sum((y-2*kseq[i]/(2+(kseq[i]-2)*exp(-rseq[j]*t)))^2)
+  }
+}
+# contour plot
+contour(rseq,kseq,cont,xlab="r",ylab="K",method = "simple")
+```
+
+## Log-Normality
+If we assume $\log N_t$ are independent and normally distributed with mean $log f(t)$ and variance $\sigma^2$. The the log-likelihood function is
+$$
+l(x,r,K,\sigma^2)=-\frac{n}{2}\ln \sigma^2-\frac{1}{2\sigma^2}\sum_{i=1}^n (\log(x_i)-\log \frac{2k}{2+(k-2)e^{-rt_i}})^2+C.
+$$
+where $C$ is a constant. Here we use Nelder-Mead method to solve this problem.
+```{r}
+y <- beetles1$beetles
+t <- beetles1$days
+n <- length(y)
+fr <- function(x){
+  x1 <- x[1] # sigma^2
+  x2 <- x[2] # k
+  x3 <- x[3] # r
+  log(x1)*n/2+sum((log(y)-log(2*x2/(2+(x2-2)*exp(-x3*t))))^2)/2/x1
+}
+grr <- function(x){
+  x1 <- x[1] # sigma^2
+  x2 <- x[2] # k
+  x3 <- x[3] # r
+  c(n/2/x1-sum((log(y)-log(2*x2/(2+(x2-2)*exp(-x3*t))))^2)/2/x1^2,
+    sum((log(y)-log(2*x2/(2+(x2-2)*exp(-x3*t))))*(2*exp(-x3*t)-2)/(2+(x2-2)*exp(-x3*t)))/x2/x1,
+    sum((log(y)-log(2*x2/(2+(x2-2)*exp(-x3*t))))*((2-x2)*t*exp(-x3*t))/(2+(x2-2)*exp(-x3*t)))/x1
+  )
+}
+
+mod1 <- optim(c(1,1900,0.1), fr, grr, method = "BFGS", hessian = TRUE)
+mod1 <- optim(c(1,2100,0.1), fr, grr, method = "CG", hessian = TRUE)
+mod1 <- constrOptim(c(1,1200,0.1), fr, grr, ui=diag(nrow = 3), ci=c(0,0,0), hessian = TRUE)
+var.est <- diag(solve(-mod1$hessian))
+var.est
+```
+
